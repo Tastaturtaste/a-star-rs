@@ -83,8 +83,10 @@ pub fn get_path(
             // Since start and exit were swapped, the path was constructed in reverse order. So the parents of all nodes on the reverse path actally point to the children of all nodes on the forward path.
             let mut path = Vec::with_capacity(width + height);
             path.push(current);
-            while let Some(current) = parents.get(&current) {
-                path.push(*current);
+            let mut current = current;
+            while let Some(next) = parents.get(&current) {
+                path.push(*next);
+                current = *next;
             }
             return Ok((path, closedlist));
         }
@@ -118,21 +120,18 @@ pub fn get_path(
                     .get(&current)
                     .expect("Every index in the openlist should also be in cum_costs")
                     + move_cost;
-                // Check if a new, shorter way was found to this neighbor
-                if cum_cost < cum_costs[&idx] {
-                    // A shorter way was found!
-                    // Update the cumulative cost to get to this neighbor if it already exists, otherwise create it.
-                    cum_costs
-                        .entry(idx)
-                        .and_modify(|cost| *cost = cum_cost)
-                        .or_insert(cum_cost);
+                // Check if a new or shorter way was found to this neighbor
+                if cum_cost < *cum_costs.entry(idx).or_insert(f64::INFINITY) {
+                    // A new or shorter way was found!
+                    // Update the cumulative cost to get to this neighbor.
+                    cum_costs.insert(idx, cum_cost);
                     // Remember the parent node through which this new shorter way leads
                     parents
                         .entry(idx)
                         .and_modify(|parent| *parent = current)
                         .or_insert(current);
                     // Insert the neighbor with a new key with the lower cumulative cost into the openlist. If there was a previous entry with higher cost for this neighbor in the openlist, the new node will get processed earlier because of the lower cost. Thus the entries with for this neighbor with higher costs will get removed lazily on the check against the closed list.
-                    let combined_cost = move_cost + estimate_cost(x, y);
+                    let combined_cost = cum_cost + estimate_cost(x, y);
                     openlist.insert(
                         OpenlistKey {
                             cost: combined_cost,
@@ -188,4 +187,20 @@ impl<K: Ord + Copy, T> BTreeMapExt<K, T> for BTreeMap<K, T> {
 fn a_star_rs(_: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_path, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::get_path;
+
+    #[test]
+    fn test_get_path() {
+        let width = 4;
+        let height = 4;
+        let costs = vec![1.0; width * height];
+        let start_idx = 0;
+        let exit_idx = costs.len() - 1;
+        let (path, set) = get_path(width, height, costs, start_idx, exit_idx, true).unwrap();
+        assert_ne!(path.len(), 1);
+    }
 }
