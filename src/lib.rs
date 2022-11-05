@@ -1,25 +1,13 @@
+use nohash_hasher::BuildNoHashHasher;
+use pyo3::{exceptions::PyValueError, prelude::*};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ops::{AddAssign, Div, Rem},
 };
 
-use pyo3::{exceptions::PyValueError, prelude::*};
-
-// /// Formats the sum of two numbers as string.
-// #[pyfunction]
-// fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-//     Ok((a + b).to_string())
-// }
-
-// /// A Python module implemented in Rust.
-// #[pymodule]
-// fn a_star_rs(_py: Python, m: &PyModule) -> PyResult<()> {
-//     m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
-//     Ok(())
-// }
-
 /// Find a path between two points on a rectangular grid with the A*-Algorithm.
 /// Returns a tuple with the list of indices for the path in order and a set of all places checked by the A*-Algorithm.
+/// Searches for the best path from start to finish using an A*-Algorithm. The function expects a flattened indexvector starting from the top left in row-major ordering. Unpassable nodes are encoded with negative values for the cost. The return value is a tuple consisting of a vector with indices of the nodes of the path in order from start to finish as well as a set containing all explored nodes.
 #[pyfunction]
 pub fn get_path(
     width: usize,
@@ -28,7 +16,7 @@ pub fn get_path(
     start_idx: usize,
     exit_idx: usize,
     diagonal_allowed: bool,
-) -> PyResult<(Vec<usize>, BTreeSet<usize>)> {
+) -> PyResult<(Vec<usize>, HashSet<usize, BuildNoHashHasher<usize>>)> {
     if width * height != individual_costs.len() {
         return Err(PyValueError::new_err(
             "Width times height != number of costs",
@@ -56,9 +44,11 @@ pub fn get_path(
     };
 
     // Map from the index to the accumulated cost of a node
-    let mut cum_costs: BTreeMap<usize, f64> = BTreeMap::new();
+    // let mut cum_costs: BTreeMap<usize, f64> = BTreeMap::new();
+    let mut cum_costs = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
     // Map from the index of one node to the index of its parent
-    let mut parents: BTreeMap<usize, usize> = BTreeMap::new();
+    // let mut parents: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut parents = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
 
     // Map of costs of neighbor nodes to their indices. A monotonically increasing insertion counter is included in the key as a tie breaker if two costs are equal as well as to make the path expansion greedy.
     let mut openlist = BTreeMap::new();
@@ -72,18 +62,18 @@ pub fn get_path(
     // Counter to keep track of number of insertions into the openlist.
     let mut insertion_counter = 1;
     cum_costs.insert(start_idx, 0.0);
-    // parents.insert(start_idx, start_idx); // The start has no parent, so its used as its own parent. This makes it possible to later identify the start.
 
     // Set of indices of all expanded nodes
-    let mut closedlist = BTreeSet::new();
+    // let mut closedlist = BTreeSet::new();
+    let mut closedlist = HashSet::with_hasher(BuildNoHashHasher::<usize>::default());
 
     // Try to find a shorter path as long as there are nodes to expand and we haven't found the exit.
     while let Some((_, current)) = openlist.pop() {
         if current == exit_idx {
             // Since start and exit were swapped, the path was constructed in reverse order. So the parents of all nodes on the reverse path actally point to the children of all nodes on the forward path.
             let mut path = Vec::with_capacity(width + height);
-            path.push(current);
-            let mut current = current;
+            path.push(exit_idx);
+            let mut current = exit_idx;
             while let Some(next) = parents.get(&current) {
                 path.push(*next);
                 current = *next;
@@ -109,8 +99,13 @@ pub fn get_path(
                 if closedlist.contains(&idx) {
                     continue;
                 }
+                let individual_cost = individual_costs[idx];
+                // Cost values lower than 0 are considered unpassable
+                if individual_cost < 0.0 {
+                    continue;
+                }
                 // By adding 1 for a cardinal direction or sqrt(2) for a diagonal direction, the cost to get from the current to the child nodes is always greater or equal to the change in heuristic cost between them. This makes the heuristic consistent.
-                let move_cost = individual_costs[idx]
+                let move_cost = individual_cost
                     + if is_diagonal_neighbor {
                         std::f64::consts::SQRT_2
                     } else {
@@ -149,7 +144,7 @@ pub fn get_path(
 }
 
 /// Struct containing all information for a position on the grid.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 struct OpenlistKey {
     // Combined cumulative and estimated cost
     cost: f64,
@@ -195,12 +190,13 @@ mod tests {
 
     #[test]
     fn test_get_path() {
+        let solution = [0, 5, 10, 15];
         let width = 4;
         let height = 4;
         let costs = vec![1.0; width * height];
         let start_idx = 0;
         let exit_idx = costs.len() - 1;
         let (path, set) = get_path(width, height, costs, start_idx, exit_idx, true).unwrap();
-        assert_ne!(path.len(), 1);
+        assert_eq!(&path, &solution);
     }
 }
