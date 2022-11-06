@@ -1,9 +1,9 @@
-use nohash_hasher::BuildNoHashHasher;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    ops::{AddAssign, Div, Rem},
+    collections::{BTreeMap},
+    ops::{AddAssign, Div, Rem}, vec,
 };
+use bitvec_simd::BitVec;
 
 /// Find a path between two points on a rectangular grid with the A*-Algorithm.
 /// Returns a tuple with the list of indices for the path in order and a set of all places checked by the A*-Algorithm.
@@ -16,7 +16,7 @@ pub fn get_path(
     start_idx: usize,
     exit_idx: usize,
     diagonal_allowed: bool,
-) -> PyResult<(Option<Vec<usize>>, HashSet<usize, BuildNoHashHasher<usize>>)> {
+) -> PyResult<(Option<Vec<usize>>, Vec<usize>)> {
     if width * height != individual_costs.len() {
         return Err(PyValueError::new_err(
             "Width times height != number of costs",
@@ -44,13 +44,9 @@ pub fn get_path(
     };
 
     // Map from the index to the accumulated cost of a node
-    // let mut cum_costs: BTreeMap<usize, f64> = BTreeMap::new();
-    let mut cum_costs = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
-    cum_costs.reserve(width*height);
+    let mut cum_costs = vec![f64::INFINITY; width*height];
     // Map from the index of one node to the index of its parent
-    // let mut parents: BTreeMap<usize, usize> = BTreeMap::new();
-    let mut parents = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
-    parents.reserve(width*height);
+    let mut parents = vec![start_idx; width*height];
     // Map of costs of neighbor nodes to their indices. A monotonically increasing insertion counter is included in the key as a tie breaker if two costs are equal as well as to make the path expansion greedy.
     let mut openlist = BTreeMap::new();
     openlist.insert(
@@ -65,24 +61,30 @@ pub fn get_path(
     cum_costs.insert(start_idx, 0.0);
 
     // Set of indices of all expanded nodes
-    // let mut closedlist = BTreeSet::new();
-    let mut closedlist = HashSet::with_hasher(BuildNoHashHasher::<usize>::default());
-    closedlist.reserve(width*height);
+    let mut closedlist = BitVec::zeros(width*height);
 
     // Try to find a shorter path as long as there are nodes to expand and we haven't found the exit.
     while let Some((_, current)) = openlist.pop() {
         if current == exit_idx {
             // Since start and exit were swapped, the path was constructed in reverse order. So the parents of all nodes on the reverse path actally point to the children of all nodes on the forward path.
-            let mut path = Vec::with_capacity(width + height);
+            // Free unused memory before allocating new memory for the path vec to reduce maximum memory usage.
+            drop(openlist);
+            drop(cum_costs);
+            drop(individual_costs);
+            let mut path = Vec::with_capacity(width * height);
             path.push(exit_idx);
             let mut current = exit_idx;
-            while let Some(next) = parents.get(&current) {
-                path.push(*next);
-                current = *next;
+            loop{
+                let next = parents[current];
+                if next == current{
+                    break;
+                }
+                path.push(next);
+                current = next;
             }
-            return Ok((Some(path), closedlist));
+            return Ok((Some(path), closedlist.into_usizes()))
         }
-        closedlist.insert(current);
+        closedlist.set(current, true);
         let (x, y) = idx2pos(current);
         for dx in -1i32..2 {
             for dy in -1i32..2 {
@@ -98,7 +100,7 @@ pub fn get_path(
                 }
                 let idx = pos2idx(x, y);
                 // Skip neighbors if they were already expanded. This does not compromise the optimality of the solution as long as the heuristic is consistent.
-                if closedlist.contains(&idx) {
+                if closedlist[idx] {
                     continue;
                 }
                 let individual_cost = individual_costs[idx];
@@ -113,20 +115,15 @@ pub fn get_path(
                     } else {
                         1.0
                     };
-                let cum_cost = cum_costs
-                    .get(&current)
-                    .expect("Every index in the openlist should also be in cum_costs")
+                let cum_cost = cum_costs[current]
                     + move_cost;
                 // Check if a new or shorter way was found to this neighbor
-                if cum_cost < *cum_costs.entry(idx).or_insert(f64::INFINITY) {
+                if cum_cost < cum_costs[idx] {
                     // A new or shorter way was found!
                     // Update the cumulative cost to get to this neighbor.
                     cum_costs.insert(idx, cum_cost);
                     // Remember the parent node through which this new shorter way leads
-                    parents
-                        .entry(idx)
-                        .and_modify(|parent| *parent = current)
-                        .or_insert(current);
+                    parents[idx] = current;
                     // Insert the neighbor with a new key with the lower cumulative cost into the openlist. If there was a previous entry with higher cost for this neighbor in the openlist, the new node will get processed earlier because of the lower cost. Thus the entries with for this neighbor with higher costs will get removed lazily on the check against the closed list.
                     let combined_cost = cum_cost + estimate_cost(x, y);
                     openlist.insert(
@@ -142,7 +139,7 @@ pub fn get_path(
         }
     }
     // No path was found
-    Ok((None, closedlist))
+    Ok((None, closedlist.into_usizes()))
 }
 
 /// Struct containing all information for a position on the grid.
