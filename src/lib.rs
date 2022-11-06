@@ -16,7 +16,7 @@ pub fn get_path(
     start_idx: usize,
     exit_idx: usize,
     diagonal_allowed: bool,
-) -> PyResult<(Vec<usize>, HashSet<usize, BuildNoHashHasher<usize>>)> {
+) -> PyResult<(Option<Vec<usize>>, HashSet<usize, BuildNoHashHasher<usize>>)> {
     if width * height != individual_costs.len() {
         return Err(PyValueError::new_err(
             "Width times height != number of costs",
@@ -46,10 +46,11 @@ pub fn get_path(
     // Map from the index to the accumulated cost of a node
     // let mut cum_costs: BTreeMap<usize, f64> = BTreeMap::new();
     let mut cum_costs = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
+    cum_costs.reserve(width*height);
     // Map from the index of one node to the index of its parent
     // let mut parents: BTreeMap<usize, usize> = BTreeMap::new();
     let mut parents = HashMap::with_hasher(BuildNoHashHasher::<usize>::default());
-
+    parents.reserve(width*height);
     // Map of costs of neighbor nodes to their indices. A monotonically increasing insertion counter is included in the key as a tie breaker if two costs are equal as well as to make the path expansion greedy.
     let mut openlist = BTreeMap::new();
     openlist.insert(
@@ -66,6 +67,7 @@ pub fn get_path(
     // Set of indices of all expanded nodes
     // let mut closedlist = BTreeSet::new();
     let mut closedlist = HashSet::with_hasher(BuildNoHashHasher::<usize>::default());
+    closedlist.reserve(width*height);
 
     // Try to find a shorter path as long as there are nodes to expand and we haven't found the exit.
     while let Some((_, current)) = openlist.pop() {
@@ -78,7 +80,7 @@ pub fn get_path(
                 path.push(*next);
                 current = *next;
             }
-            return Ok((path, closedlist));
+            return Ok((Some(path), closedlist));
         }
         closedlist.insert(current);
         let (x, y) = idx2pos(current);
@@ -140,7 +142,7 @@ pub fn get_path(
         }
     }
     // No path was found
-    Ok((vec![usize::MAX], closedlist))
+    Ok((None, closedlist))
 }
 
 /// Struct containing all information for a position on the grid.
@@ -196,7 +198,7 @@ mod tests {
         let costs = vec![1.0; width * height];
         let start_idx = 0;
         let exit_idx = costs.len() - 1;
-        let (path, set) = get_path(width, height, costs, start_idx, exit_idx, true).unwrap();
-        assert_eq!(&path, &solution);
+        let (path, _set) = get_path(width, height, costs, start_idx, exit_idx, true).unwrap();
+        assert_eq!(&path.unwrap(), &solution);
     }
 }
