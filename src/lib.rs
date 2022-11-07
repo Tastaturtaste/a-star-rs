@@ -1,4 +1,3 @@
-use bitvec_simd::BitVec;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::{
     collections::BTreeMap,
@@ -59,10 +58,10 @@ pub fn get_path(
     );
     // Counter to keep track of number of insertions into the openlist.
     let mut insertion_counter = 1;
-    cum_costs.insert(start_idx, 0.0);
+    cum_costs[start_idx] = 0.0;
 
     // Set of indices of all expanded nodes
-    let mut closedlist = BitVec::zeros(width * height);
+    let mut closedlist = vec![false; width * height];
 
     // Try to find a shorter path as long as there are nodes to expand and we haven't found the exit.
     while let Some((_, current)) = openlist.pop() {
@@ -83,9 +82,16 @@ pub fn get_path(
                 path.push(next);
                 current = next;
             }
-            return Ok((Some(path), closedlist.into_usizes()));
+            return Ok((
+                Some(path),
+                closedlist
+                    .into_iter()
+                    .enumerate()
+                    .filter_map(|(i, b)| if b { Some(i) } else { None })
+                    .collect(),
+            ));
         }
-        closedlist.set(current, true);
+        closedlist[current] = true;
         let (x, y) = idx2pos(current);
         for dx in -1i32..2 {
             for dy in -1i32..2 {
@@ -121,7 +127,7 @@ pub fn get_path(
                 if cum_cost < cum_costs[idx] {
                     // A new or shorter way was found!
                     // Update the cumulative cost to get to this neighbor.
-                    cum_costs.insert(idx, cum_cost);
+                    cum_costs[idx] = cum_cost;
                     // Remember the parent node through which this new shorter way leads
                     parents[idx] = current;
                     // Insert the neighbor with a new key with the lower cumulative cost into the openlist. If there was a previous entry with higher cost for this neighbor in the openlist, the new node will get processed earlier because of the lower cost. Thus the entries with for this neighbor with higher costs will get removed lazily on the check against the closed list.
@@ -139,7 +145,14 @@ pub fn get_path(
         }
     }
     // No path was found
-    Ok((None, closedlist.into_usizes()))
+    Ok((
+        None,
+        closedlist
+            .into_iter()
+            .enumerate()
+            .filter_map(|(i, b)| if b { Some(i) } else { None })
+            .collect(),
+    ))
 }
 
 /// Struct containing all information for a position on the grid.
