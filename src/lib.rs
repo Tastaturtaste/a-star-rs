@@ -1,9 +1,10 @@
+use bitvec_simd::BitVec;
 use pyo3::{exceptions::PyValueError, prelude::*};
 use std::{
-    collections::{BTreeMap},
-    ops::{AddAssign, Div, Rem}, vec,
+    collections::BTreeMap,
+    ops::{AddAssign, Div, Rem},
+    vec,
 };
-use bitvec_simd::BitVec;
 
 /// Find a path between two points on a rectangular grid with the A*-Algorithm.
 /// Returns a tuple with the list of indices for the path in order and a set of all places checked by the A*-Algorithm.
@@ -44,9 +45,9 @@ pub fn get_path(
     };
 
     // Map from the index to the accumulated cost of a node
-    let mut cum_costs = vec![f64::INFINITY; width*height];
+    let mut cum_costs = vec![f64::INFINITY; width * height];
     // Map from the index of one node to the index of its parent
-    let mut parents = vec![start_idx; width*height];
+    let mut parents = vec![start_idx; width * height];
     // Map of costs of neighbor nodes to their indices. A monotonically increasing insertion counter is included in the key as a tie breaker if two costs are equal as well as to make the path expansion greedy.
     let mut openlist = BTreeMap::new();
     openlist.insert(
@@ -61,7 +62,7 @@ pub fn get_path(
     cum_costs.insert(start_idx, 0.0);
 
     // Set of indices of all expanded nodes
-    let mut closedlist = BitVec::zeros(width*height);
+    let mut closedlist = BitVec::zeros(width * height);
 
     // Try to find a shorter path as long as there are nodes to expand and we haven't found the exit.
     while let Some((_, current)) = openlist.pop() {
@@ -74,15 +75,15 @@ pub fn get_path(
             let mut path = Vec::with_capacity(width * height);
             path.push(exit_idx);
             let mut current = exit_idx;
-            loop{
+            loop {
                 let next = parents[current];
-                if next == current{
+                if next == current {
                     break;
                 }
                 path.push(next);
                 current = next;
             }
-            return Ok((Some(path), closedlist.into_usizes()))
+            return Ok((Some(path), closedlist.into_usizes()));
         }
         closedlist.set(current, true);
         let (x, y) = idx2pos(current);
@@ -115,8 +116,7 @@ pub fn get_path(
                     } else {
                         1.0
                     };
-                let cum_cost = cum_costs[current]
-                    + move_cost;
+                let cum_cost = cum_costs[current] + move_cost;
                 // Check if a new or shorter way was found to this neighbor
                 if cum_cost < cum_costs[idx] {
                     // A new or shorter way was found!
