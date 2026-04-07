@@ -1,14 +1,12 @@
-use pyo3::{exceptions::PyValueError, prelude::*};
 use std::{
     collections::BTreeMap,
-    ops::{AddAssign, Div, Rem},
-    vec,
+    ops::{AddAssign as _, Div as _, Rem as _},
 };
 
 /// Find a path between two points on a rectangular grid with the A*-Algorithm.
 /// Returns a tuple with the list of indices for the path in order and a set of all places checked by the A*-Algorithm.
 /// Searches for the best path from start to finish using an A*-Algorithm. The function expects a flattened indexvector starting from the top left in row-major ordering. Unpassable nodes are encoded with negative values for the cost. The return value is a tuple consisting of a vector with indices of the nodes of the path in order from start to finish as well as a set containing all explored nodes.
-#[pyfunction]
+#[pyo3::pyfunction]
 pub fn get_path(
     width: usize,
     height: usize,
@@ -16,9 +14,9 @@ pub fn get_path(
     start_idx: usize,
     exit_idx: usize,
     diagonal_allowed: bool,
-) -> PyResult<(Option<Vec<usize>>, Vec<usize>)> {
+) -> pyo3::PyResult<(Option<Vec<usize>>, Vec<usize>)> {
     if width * height != individual_costs.len() {
-        return Err(PyValueError::new_err(
+        return Err(pyo3::exceptions::PyValueError::new_err(
             "Width times height != number of costs",
         ));
     }
@@ -174,7 +172,7 @@ impl PartialOrd for OpenlistKey {
 }
 impl Ord for OpenlistKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(&other)
+        self.partial_cmp(other)
             .expect("All costs should be in the totally ordered set of floats, thus excluding NaN.")
     }
 }
@@ -189,17 +187,14 @@ impl<K: Ord + Copy, T> BTreeMapExt<K, T> for BTreeMap<K, T> {
         self.remove_entry(&k)
     }
 }
-
-#[pymodule]
-fn a_star_rs(_: Python<'_>, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(get_path, m)?)?;
-    Ok(())
+#[pyo3::pymodule]
+mod a_star_rs {
+    #[pymodule_export]
+    use super::get_path;
 }
-
 #[cfg(test)]
-mod tests {
-    use crate::get_path;
-
+mod test {
+    use super::*;
     #[test]
     fn test_get_path() {
         let solution = [0, 5, 10, 15];

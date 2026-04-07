@@ -9,10 +9,10 @@ name = "a_star_rs"
 crate-type = ["cdylib", "rlib"] # rlib necessary for benchmarks with criterion
 
 [dependencies]
-pyo3 = { version = "0.17.1", features = ["extension-module"] }
+pyo3 = { version = "0.28.3", features = ["abi3-py310"] }
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.8.2"
 
 [[bench]]
 name = "my_bench"
